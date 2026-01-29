@@ -35,7 +35,7 @@ condition: []
 action:
   - choose:
 
-      # 🔊 RECEIVER LIGOU
+      # RECEIVER LIGOU
       - conditions:
           - condition: template
             value_template: >
@@ -45,7 +45,7 @@ action:
             target:
               entity_id: !input sub_plug
 
-      # 🔇 RECEIVER DESLIGOU
+      # RECEIVER DESLIGOU
       - conditions:
           - condition: template
             value_template: >
