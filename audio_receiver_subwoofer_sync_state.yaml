@@ -1,0 +1,58 @@
+blueprint:
+  name: Receiver → Subwoofer (Tomada Inteligente)
+  description: Liga a tomada do subwoofer quando o receiver liga e desliga quando ele desliga.
+  domain: automation
+  input:
+    receiver:
+      name: Receiver (media_player ou switch)
+      selector:
+        entity: {}
+
+    sub_plug:
+      name: Tomada do Subwoofer
+      selector:
+        entity:
+          domain: switch
+
+    off_delay:
+      name: Delay para desligar o sub (segundos)
+      description: Evita "estalo" desligando o sub logo após o receiver
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 30
+          unit_of_measurement: s
+
+mode: restart
+
+trigger:
+  - platform: state
+    entity_id: !input receiver
+
+condition: []
+
+action:
+  - choose:
+
+      # 🔊 RECEIVER LIGOU
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.to_state.state not in ['off','standby','unavailable','unknown'] }}
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input sub_plug
+
+      # 🔇 RECEIVER DESLIGOU
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.to_state.state in ['off','standby'] }}
+        sequence:
+          - delay:
+              seconds: !input off_delay
+          - service: switch.turn_off
+            target:
+              entity_id: !input sub_plug
