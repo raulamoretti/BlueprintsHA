@@ -34,8 +34,10 @@ blueprint:
       selector:
         select:
           options:
-            - "127"
-            - "220"
+            - label: "127 V"
+              value: "127"
+            - label: "220 V"
+              value: "220"
 
     cut_delta:
       name: Desvio para desligar (±V)
@@ -117,7 +119,6 @@ action:
 
   - choose:
 
-      # CORTA POR TENSÃO
       - conditions:
           - condition: template
             value_template: "{{ v < (n - cut_d) or v > (n + cut_d) }}"
@@ -141,7 +142,6 @@ action:
               title: "Proteção de Tensão Ativada"
               message: "Tomada desligada. Tensão atual: {{ v }}V"
 
-      # RELIGA COM PROTEÇÃO DO COMPRESSOR
       - conditions:
           - condition: template
             value_template: "{{ (n - res_d) <= v <= (n + res_d) }}"
@@ -159,7 +159,6 @@ action:
               message: "Tomada religada após estabilização"
               entity_id: !input plug
 
-      # ALERTA DESLIGADA POR MUITO TEMPO
       - conditions:
           - condition: template
             value_template: "{{ trigger.platform == 'state' }}"
