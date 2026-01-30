@@ -1,5 +1,5 @@
 blueprint:
-  name: Proteção Industrial de Tomada v2
+  name: Proteção Industrial de Tomada v3
   description: Proteção contra tensão fora da faixa com religamento seguro.
   domain: automation
 
