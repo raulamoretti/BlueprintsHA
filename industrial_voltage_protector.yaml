@@ -28,33 +28,40 @@ blueprint:
         device:
           integration: mobile_app
 
-    nominal_voltage:
-      name: Tensão da rede
-      default: "127"
-      selector:
-        select:
-          options:
-            - label: "127 V"
-              value: "127"
-            - label: "220 V"
-              value: "220"
-
-    cut_delta:
-      name: Desvio para desligar (±V)
-      default: 12
+    cut_below:
+      name: Limite inferior de corte (V)
+      default: 115
       selector:
         number:
-          min: 5
-          max: 40
+          min: 80
+          max: 200
           unit_of_measurement: V
 
-    restore_delta:
-      name: Faixa segura para religar (±V)
-      default: 12
+    cut_above:
+      name: Limite superior de corte (V)
+      default: 140
       selector:
         number:
-          min: 5
-          max: 30
+          min: 120
+          max: 260
+          unit_of_measurement: V
+
+    restore_below:
+      name: Limite inferior para religar (V)
+      default: 119
+      selector:
+        number:
+          min: 90
+          max: 200
+          unit_of_measurement: V
+
+    restore_above:
+      name: Limite superior para religar (V)
+      default: 135
+      selector:
+        number:
+          min: 110
+          max: 260
           unit_of_measurement: V
 
     stabilize_time:
@@ -95,47 +102,10 @@ trigger:
     for:
       minutes: !input stabilize_time
 
-# Cálculo dos limites fora do template de trigger (HA exige valores fixos)
-input:
-  cut_below:
-    name: Limite inferior de corte
-    default: 115
-    selector:
-      number:
-        min: 80
-        max: 200
-        unit_of_measurement: V
-
-  cut_above:
-    name: Limite superior de corte
-    default: 140
-    selector:
-      number:
-        min: 120
-        max: 260
-        unit_of_measurement: V
-
-  restore_below:
-    name: Limite inferior para religar
-    default: 119
-    selector:
-      number:
-        min: 90
-        max: 200
-        unit_of_measurement: V
-
-  restore_above:
-    name: Limite superior para religar
-    default: 135
-    selector:
-      number:
-        min: 110
-        max: 260
-        unit_of_measurement: V
-
 action:
   - choose:
 
+      # DESLIGA
       - conditions:
           - condition: template
             value_template: "{{ is_state(plug_entity, 'on') }}"
@@ -153,6 +123,7 @@ action:
               title: "Proteção de Tensão"
               message: "Tomada desligada por tensão fora do limite."
 
+      # RELIGA
       - conditions:
           - condition: template
             value_template: "{{ is_state(plug_entity, 'off') }}"
