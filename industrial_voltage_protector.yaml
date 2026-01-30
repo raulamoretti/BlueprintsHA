@@ -1,6 +1,6 @@
 blueprint:
-  name: Proteção Industrial de Tomada v4
-  description: Proteção contra tensão fora da faixa com religamento seguro.
+  name: Proteção de Tensão Tomada (Estável v3)
+  description: Proteção robusta contra subtensão e sobretensão com proteção de compressor.
   domain: automation
 
   input:
@@ -50,121 +50,121 @@ blueprint:
 
     restore_delta:
       name: Faixa segura para religar (±V)
-      default: 8
+      default: 12
       selector:
         number:
-          min: 3
-          max: 25
+          min: 5
+          max: 30
           unit_of_measurement: V
 
     stabilize_time:
-      name: Tempo mínimo de tensão estável (min)
+      name: Tempo de tensão estável para religar (min)
       default: 3
       selector:
         number:
           min: 1
           max: 30
-          unit_of_measurement: min
 
     compressor_delay:
-      name: Tempo mínimo desde o último desligamento (min)
+      name: Tempo mínimo de compressor desligado (min)
       default: 10
       selector:
         number:
           min: 0
           max: 30
-          unit_of_measurement: min
 
-    long_off_alert:
-      name: Alerta se desligada por (min)
-      default: 20
-      selector:
-        number:
-          min: 5
-          max: 120
-          unit_of_measurement: min
-
-mode: restart
+mode: single
 
 variables:
   plug_entity: !input plug
-  voltage_entity: !input voltage_sensor
-  counter_entity: !input surge_counter
-  nominal_v: !input nominal_voltage
-  cut_d: !input cut_delta
-  restore_d: !input restore_delta
-  comp_delay_input: !input compressor_delay
 
 trigger:
-  - platform: state
-    entity_id: !input voltage_sensor
 
-  - platform: state
-    entity_id: !input plug
-    to: "off"
+  - platform: numeric_state
+    entity_id: !input voltage_sensor
+    below: !input cut_below
+
+  - platform: numeric_state
+    entity_id: !input voltage_sensor
+    above: !input cut_above
+
+  - platform: numeric_state
+    entity_id: !input voltage_sensor
+    above: !input restore_below
+    below: !input restore_above
     for:
-      minutes: !input long_off_alert
+      minutes: !input stabilize_time
+
+# Cálculo dos limites fora do template de trigger (HA exige valores fixos)
+input:
+  cut_below:
+    name: Limite inferior de corte
+    default: 115
+    selector:
+      number:
+        min: 80
+        max: 200
+        unit_of_measurement: V
+
+  cut_above:
+    name: Limite superior de corte
+    default: 140
+    selector:
+      number:
+        min: 120
+        max: 260
+        unit_of_measurement: V
+
+  restore_below:
+    name: Limite inferior para religar
+    default: 119
+    selector:
+      number:
+        min: 90
+        max: 200
+        unit_of_measurement: V
+
+  restore_above:
+    name: Limite superior para religar
+    default: 135
+    selector:
+      number:
+        min: 110
+        max: 260
+        unit_of_measurement: V
 
 action:
-  - variables:
-      v: "{{ states(voltage_entity) | float(0) }}"
-      n: "{{ nominal_v | float }}"
-      cut: "{{ cut_d | float }}"
-      res: "{{ restore_d | float }}"
-      comp_delay: "{{ comp_delay_input | float(0) }}"
-      last_off: "{{ states[plug_entity].last_changed }}"
-      minutes_since_off: "{{ (as_timestamp(now()) - as_timestamp(last_off)) / 60 }}"
-
   - choose:
 
-      # DESLIGA POR TENSÃO
       - conditions:
           - condition: template
-            value_template: "{{ v < (n - cut) or v > (n + cut) }}"
+            value_template: "{{ is_state(plug_entity, 'on') }}"
         sequence:
           - service: switch.turn_off
             target:
-              entity_id: "{{ plug_entity }}"
+              entity_id: !input plug
 
           - service: counter.increment
             target:
-              entity_id: "{{ counter_entity }}"
-
-          - service: logbook.log
-            data:
-              name: Proteção de Tensão
-              message: "Desligada por tensão fora do limite ({{ v }}V)"
-              entity_id: "{{ plug_entity }}"
+              entity_id: !input surge_counter
 
           - service: notify.notify
             data:
               title: "Proteção de Tensão"
-              message: "Tomada desligada. Tensão atual: {{ v }}V"
+              message: "Tomada desligada por tensão fora do limite."
 
-      # RELIGA (lógica industrial correta)
       - conditions:
           - condition: template
-            value_template: "{{ (n - res) <= v <= (n + res) and minutes_since_off >= comp_delay }}"
+            value_template: "{{ is_state(plug_entity, 'off') }}"
         sequence:
           - delay:
-              minutes: !input stabilize_time
+              minutes: !input compressor_delay
 
           - service: switch.turn_on
             target:
-              entity_id: "{{ plug_entity }}"
+              entity_id: !input plug
 
-          - service: logbook.log
-            data:
-              name: Proteção de Tensão
-              message: "Tomada religada após condições seguras"
-              entity_id: "{{ plug_entity }}"
-
-      # ALERTA LONGO DESLIGADO
-      - conditions:
-          - condition: template
-            value_template: "{{ trigger.platform == 'state' }}"
-        sequence:
           - service: notify.notify
             data:
-              title: "Alerta de Energia"
-              message: "A geladeira está desligada há muito tempo."
+              title: "Energia Restabelecida"
+              message: "Tomada religada com segurança."
