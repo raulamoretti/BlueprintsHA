@@ -1,6 +1,6 @@
 blueprint:
-  name: Proteção Industrial de Tomada v2 (Lógica Correta Compressor)
-  description: Proteção contra tensão fora da faixa com religamento baseado no maior tempo entre estabilidade da rede e proteção do compressor.
+  name: Proteção Industrial de Tomada v2
+  description: Proteção contra tensão fora da faixa com religamento seguro.
   domain: automation
 
   input:
@@ -71,7 +71,7 @@ blueprint:
       default: 10
       selector:
         number:
-          min: 5
+          min: 0
           max: 30
           unit_of_measurement: min
 
@@ -95,12 +95,9 @@ variables:
   restore_d: !input restore_delta
 
 trigger:
-
-  # Mudança de tensão
   - platform: state
     entity_id: !input voltage_sensor
 
-  # Alerta desligada muito tempo
   - platform: state
     entity_id: !input plug
     to: "off"
@@ -114,12 +111,10 @@ action:
       cut: "{{ cut_d | float }}"
       res: "{{ restore_d | float }}"
       last_off: "{{ states[plug_entity].last_changed }}"
-      minutes_since_off: >
-        {{ (as_timestamp(now()) - as_timestamp(last_off)) / 60 }}
+      minutes_since_off: "{{ (as_timestamp(now()) - as_timestamp(last_off)) / 60 }}"
 
   - choose:
 
-      # DESLIGA POR TENSÃO
       - conditions:
           - condition: template
             value_template: "{{ v < (n - cut) or v > (n + cut) }}"
@@ -138,19 +133,18 @@ action:
               message: "Desligada por tensão fora do limite ({{ v }}V)"
               entity_id: "{{ plug_entity }}"
 
-          - service: notify.mobile_app_{{ device_attr(!input notify_device, 'name') | slugify }}
+          - service: notify.notify
             data:
               title: "Proteção de Tensão"
               message: "Tomada desligada. Tensão atual: {{ v }}V"
 
-      # RELIGA (condição industrial)
       - conditions:
           - condition: template
-            value_template: >
-              {{ (n - res) <= v <= (n + res)
-                 and minutes_since_off >= (!input compressor_delay)
-                 and (trigger.to_state.last_changed < (now() - timedelta(minutes=(!input stabilize_time)))) }}
+            value_template: "{{ (n - res) <= v <= (n + res) and minutes_since_off >= (!input compressor_delay) }}"
         sequence:
+          - delay:
+              minutes: !input stabilize_time
+
           - service: switch.turn_on
             target:
               entity_id: "{{ plug_entity }}"
@@ -161,12 +155,11 @@ action:
               message: "Tomada religada após condições seguras"
               entity_id: "{{ plug_entity }}"
 
-      # ALERTA LONGO DESLIGADO
       - conditions:
           - condition: template
             value_template: "{{ trigger.platform == 'state' }}"
         sequence:
-          - service: notify.mobile_app_{{ device_attr(!input notify_device, 'name') | slugify }}
+          - service: notify.notify
             data:
               title: "Alerta de Energia"
               message: "A geladeira está desligada há muito tempo."
