@@ -1,5 +1,5 @@
 blueprint:
-  name: Proteção Industrial de Tomada v3
+  name: Proteção Industrial de Tomada v4
   description: Proteção contra tensão fora da faixa com religamento seguro.
   domain: automation
 
@@ -93,6 +93,7 @@ variables:
   nominal_v: !input nominal_voltage
   cut_d: !input cut_delta
   restore_d: !input restore_delta
+  comp_delay_input: !input compressor_delay
 
 trigger:
   - platform: state
@@ -110,11 +111,13 @@ action:
       n: "{{ nominal_v | float }}"
       cut: "{{ cut_d | float }}"
       res: "{{ restore_d | float }}"
+      comp_delay: "{{ comp_delay_input | float(0) }}"
       last_off: "{{ states[plug_entity].last_changed }}"
       minutes_since_off: "{{ (as_timestamp(now()) - as_timestamp(last_off)) / 60 }}"
 
   - choose:
 
+      # DESLIGA POR TENSÃO
       - conditions:
           - condition: template
             value_template: "{{ v < (n - cut) or v > (n + cut) }}"
@@ -138,9 +141,10 @@ action:
               title: "Proteção de Tensão"
               message: "Tomada desligada. Tensão atual: {{ v }}V"
 
+      # RELIGA (lógica industrial correta)
       - conditions:
           - condition: template
-            value_template: "{{ (n - res) <= v <= (n + res) and minutes_since_off >= (!input compressor_delay) }}"
+            value_template: "{{ (n - res) <= v <= (n + res) and minutes_since_off >= comp_delay }}"
         sequence:
           - delay:
               minutes: !input stabilize_time
@@ -155,6 +159,7 @@ action:
               message: "Tomada religada após condições seguras"
               entity_id: "{{ plug_entity }}"
 
+      # ALERTA LONGO DESLIGADO
       - conditions:
           - condition: template
             value_template: "{{ trigger.platform == 'state' }}"
