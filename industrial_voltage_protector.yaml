@@ -1,0 +1,165 @@
+blueprint:
+  name: Proteção Industrial de Tomada (Compressor / Geladeira)
+  description: Proteção contra surtos de tensão com bloqueio de religamento e alertas.
+  domain: automation
+
+  input:
+    plug:
+      name: Tomada
+      selector:
+        entity:
+          domain: switch
+
+    voltage_sensor:
+      name: Sensor de Tensão
+      selector:
+        entity:
+          domain: sensor
+
+    surge_counter:
+      name: Contador de Surtos (helper counter)
+      selector:
+        entity:
+          domain: counter
+
+    notify_device:
+      name: Dispositivo para notificação
+      selector:
+        device:
+          integration: mobile_app
+
+    nominal_voltage:
+      name: Tensão da rede
+      default: 127
+      selector:
+        select:
+          options: [127, 220]
+
+    cut_delta:
+      name: Desvio para desligar (±V)
+      default: 12
+      selector:
+        number:
+          min: 5
+          max: 40
+          unit_of_measurement: V
+
+    restore_delta:
+      name: Faixa segura para religar (±V)
+      default: 8
+      selector:
+        number:
+          min: 3
+          max: 25
+          unit_of_measurement: V
+
+    stabilize_time:
+      name: Tempo de tensão estável (min)
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: min
+
+    compressor_delay:
+      name: Bloqueio mínimo do compressor (min)
+      default: 10
+      selector:
+        number:
+          min: 5
+          max: 30
+          unit_of_measurement: min
+
+    long_off_alert:
+      name: Alerta se ficar desligada por (min)
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: min
+
+mode: restart
+
+trigger:
+
+  - platform: template
+    value_template: >
+      {% set v = states(!input voltage_sensor) | float(0) %}
+      {% set n = !input nominal_voltage | float %}
+      {% set d = !input cut_delta | float %}
+      {{ v < (n - d) or v > (n + d) }}
+
+  - platform: template
+    value_template: >
+      {% set v = states(!input voltage_sensor) | float(0) %}
+      {% set n = !input nominal_voltage | float %}
+      {% set d = !input restore_delta | float %}
+      {{ (n - d) <= v <= (n + d) }}
+    for:
+      minutes: !input stabilize_time
+
+  - platform: state
+    entity_id: !input plug
+    to: "off"
+    for:
+      minutes: !input long_off_alert
+
+action:
+  - variables:
+      v: "{{ states(!input voltage_sensor) | float(0) }}"
+      n: "{{ !input nominal_voltage | float }}"
+      cut_d: "{{ !input cut_delta | float }}"
+      res_d: "{{ !input restore_delta | float }}"
+
+  - choose:
+
+      - conditions:
+          - condition: template
+            value_template: "{{ v < (n - cut_d) or v > (n + cut_d) }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input plug
+
+          - service: counter.increment
+            target:
+              entity_id: !input surge_counter
+
+          - service: logbook.log
+            data:
+              name: Proteção de Tensão
+              message: "Tomada desligada por tensão perigosa ({{ v }}V)"
+              entity_id: !input plug
+
+          - service: notify.mobile_app_{{ device_attr(!input notify_device, 'name') | slugify }}
+            data:
+              title: "Proteção de Tensão Ativada"
+              message: "Tomada desligada. Tensão atual: {{ v }}V"
+
+      - conditions:
+          - condition: template
+            value_template: "{{ (n - res_d) <= v <= (n + res_d) }}"
+        sequence:
+          - delay:
+              minutes: !input compressor_delay
+
+          - service: switch.turn_on
+            target:
+              entity_id: !input plug
+
+          - service: logbook.log
+            data:
+              name: Proteção de Tensão
+              message: "Tomada religada após estabilização"
+              entity_id: !input plug
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.platform == 'state' }}"
+        sequence:
+          - service: notify.mobile_app_{{ device_attr(!input notify_device, 'name') | slugify }}
+            data:
+              title: "Alerta de Energia"
+              message: "A tomada da geladeira está desligada há muito tempo."
