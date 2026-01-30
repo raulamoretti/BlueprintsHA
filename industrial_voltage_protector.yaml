@@ -30,10 +30,12 @@ blueprint:
 
     nominal_voltage:
       name: Tensão da rede
-      default: 127
+      default: "127"
       selector:
         select:
-          options: [127, 220]
+          options:
+            - "127"
+            - "220"
 
     cut_delta:
       name: Desvio para desligar (±V)
@@ -87,15 +89,15 @@ trigger:
   - platform: template
     value_template: >
       {% set v = states(!input voltage_sensor) | float(0) %}
-      {% set n = !input nominal_voltage | float %}
-      {% set d = !input cut_delta | float %}
+      {% set n = (!input nominal_voltage) | float %}
+      {% set d = (!input cut_delta) | float %}
       {{ v < (n - d) or v > (n + d) }}
 
   - platform: template
     value_template: >
       {% set v = states(!input voltage_sensor) | float(0) %}
-      {% set n = !input nominal_voltage | float %}
-      {% set d = !input restore_delta | float %}
+      {% set n = (!input nominal_voltage) | float %}
+      {% set d = (!input restore_delta) | float %}
       {{ (n - d) <= v <= (n + d) }}
     for:
       minutes: !input stabilize_time
@@ -109,12 +111,13 @@ trigger:
 action:
   - variables:
       v: "{{ states(!input voltage_sensor) | float(0) }}"
-      n: "{{ !input nominal_voltage | float }}"
-      cut_d: "{{ !input cut_delta | float }}"
-      res_d: "{{ !input restore_delta | float }}"
+      n: "{{ (!input nominal_voltage) | float }}"
+      cut_d: "{{ (!input cut_delta) | float }}"
+      res_d: "{{ (!input restore_delta) | float }}"
 
   - choose:
 
+      # CORTA POR TENSÃO
       - conditions:
           - condition: template
             value_template: "{{ v < (n - cut_d) or v > (n + cut_d) }}"
@@ -138,6 +141,7 @@ action:
               title: "Proteção de Tensão Ativada"
               message: "Tomada desligada. Tensão atual: {{ v }}V"
 
+      # RELIGA COM PROTEÇÃO DO COMPRESSOR
       - conditions:
           - condition: template
             value_template: "{{ (n - res_d) <= v <= (n + res_d) }}"
@@ -155,6 +159,7 @@ action:
               message: "Tomada religada após estabilização"
               entity_id: !input plug
 
+      # ALERTA DESLIGADA POR MUITO TEMPO
       - conditions:
           - condition: template
             value_template: "{{ trigger.platform == 'state' }}"
