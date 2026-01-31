@@ -1,5 +1,5 @@
 blueprint:
-  name: Proteção de Tensão Tomada (Fail-Safe v4)
+  name: Proteção de Tensão Tomada (Fail-Safe v4.1)
   description: Proteção contra subtensão e sobretensão com lógica defensiva.
   domain: automation
 
@@ -85,7 +85,10 @@ mode: single
 variables:
   plug_entity: !input plug
   voltage_entity: !input voltage_sensor
-  v: "{{ states(voltage_entity) | float(0) }}"
+  cut_low: !input cut_below
+  cut_high: !input cut_above
+  restore_low: !input restore_below
+  restore_high: !input restore_above
 
 trigger:
   - platform: numeric_state
@@ -104,13 +107,19 @@ trigger:
       minutes: !input stabilize_time
 
 action:
+  - variables:
+      v: "{{ states(voltage_entity) | float(0) }}"
+      cut_l: "{{ cut_low | float }}"
+      cut_h: "{{ cut_high | float }}"
+      res_l: "{{ restore_low | float }}"
+      res_h: "{{ restore_high | float }}"
+
   - choose:
 
-      # DESLIGAR SOMENTE SE TENSÃO REALMENTE ESTIVER FORA
+      # DESLIGA APENAS SE TENSÃO REALMENTE FORA
       - conditions:
           - condition: template
-            value_template: >
-              {{ (v < (!input cut_below)) or (v > (!input cut_above)) }}
+            value_template: "{{ v < cut_l or v > cut_h }}"
           - condition: state
             entity_id: !input plug
             state: "on"
@@ -128,11 +137,10 @@ action:
               title: "Proteção de Tensão"
               message: "Tomada desligada por tensão fora do limite."
 
-      # RELIGAR SOMENTE SE TENSÃO REALMENTE ESTIVER SEGURA
+      # RELIGA APENAS SE TENSÃO SEGURA
       - conditions:
           - condition: template
-            value_template: >
-              {{ (!input restore_below) <= v <= (!input restore_above) }}
+            value_template: "{{ res_l <= v <= res_h }}"
           - condition: state
             entity_id: !input plug
             state: "off"
