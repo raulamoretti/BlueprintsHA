@@ -1,6 +1,6 @@
 blueprint:
-  name: Proteção de Tensão Tomada (Estável v3)
-  description: Proteção robusta contra subtensão e sobretensão com proteção de compressor.
+  name: Proteção de Tensão Tomada (Fail-Safe v4)
+  description: Proteção contra subtensão e sobretensão com lógica defensiva.
   domain: automation
 
   input:
@@ -65,7 +65,7 @@ blueprint:
           unit_of_measurement: V
 
     stabilize_time:
-      name: Tempo de tensão estável para religar (min)
+      name: Tempo de tensão estável (min)
       default: 3
       selector:
         number:
@@ -73,7 +73,7 @@ blueprint:
           max: 30
 
     compressor_delay:
-      name: Tempo mínimo de compressor desligado (min)
+      name: Tempo mínimo compressor desligado (min)
       default: 10
       selector:
         number:
@@ -84,9 +84,10 @@ mode: single
 
 variables:
   plug_entity: !input plug
+  voltage_entity: !input voltage_sensor
+  v: "{{ states(voltage_entity) | float(0) }}"
 
 trigger:
-
   - platform: numeric_state
     entity_id: !input voltage_sensor
     below: !input cut_below
@@ -105,10 +106,14 @@ trigger:
 action:
   - choose:
 
-      # DESLIGA
+      # DESLIGAR SOMENTE SE TENSÃO REALMENTE ESTIVER FORA
       - conditions:
           - condition: template
-            value_template: "{{ is_state(plug_entity, 'on') }}"
+            value_template: >
+              {{ (v < (!input cut_below)) or (v > (!input cut_above)) }}
+          - condition: state
+            entity_id: !input plug
+            state: "on"
         sequence:
           - service: switch.turn_off
             target:
@@ -123,10 +128,14 @@ action:
               title: "Proteção de Tensão"
               message: "Tomada desligada por tensão fora do limite."
 
-      # RELIGA
+      # RELIGAR SOMENTE SE TENSÃO REALMENTE ESTIVER SEGURA
       - conditions:
           - condition: template
-            value_template: "{{ is_state(plug_entity, 'off') }}"
+            value_template: >
+              {{ (!input restore_below) <= v <= (!input restore_above) }}
+          - condition: state
+            entity_id: !input plug
+            state: "off"
         sequence:
           - delay:
               minutes: !input compressor_delay
